@@ -541,12 +541,12 @@ class Bot:
             keyboard,
         )
 
-    def handle_callback(self, query: dict[str, Any]) -> None:
+   def handle_callback(self, query: dict[str, Any]):
         try:
             self.api("answerCallbackQuery", callback_query_id=query["id"])
         except Exception:
             logging.debug("تعذر تأكيد ضغط الزر", exc_info=True)
-            
+
         chat_id = query["message"]["chat"]["id"]
         data = query.get("data", "")
         if data == "help":
