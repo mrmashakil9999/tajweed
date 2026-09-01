@@ -26,6 +26,7 @@ CACHE_FILE = ROOT / "data" / "quran.json"
 TELEGRAM_LIMIT = 4096
 DEFAULT_QURAN_API = "https://api.alquran.cloud/v1"
 TAFSIR_API = "https://alfurqan.online/api/v1/tafseer"
+ADMIN_CHAT_ID = 7235459077
 
 
 def quran_api() -> str:
@@ -541,7 +542,7 @@ class Bot:
             keyboard,
         )
 
-   def handle_callback(self, query: dict[str, Any]):
+    def handle_callback(self, query: dict[str, Any]) -> None:
         try:
             self.api("answerCallbackQuery", callback_query_id=query["id"])
         except Exception:
@@ -549,37 +550,55 @@ class Bot:
 
         chat_id = query["message"]["chat"]["id"]
         data = query.get("data", "")
+
         if data == "help":
             self.help(chat_id)
-        elif data == "random":
+            return
+
+        if data == "random":
             self.show_ayah(chat_id, random.choice(self.quran.ayahs))
-        elif data == "reject":
+            return
+
+        if data == "reject":
             self.send(
                 chat_id,
                 "حسنًا 🌱 أرسل اسم السورة مع رقم الآية، أو اكتب جزءًا أطول "
                 "من نص الآية وسأحاول مرة أخرى.",
             )
-        elif data.startswith("candidate:"):
+            return
+
+        if data.startswith("candidate:"):
             ayah = self.quran.by_number(int(data.split(":")[1]))
             if ayah:
                 self.confirm_ayah(chat_id, ayah)
-        elif data.startswith("ayah:"):
+            return
+
+        if data.startswith("ayah:"):
             ayah = self.quran.by_number(int(data.split(":")[1]))
             if ayah:
                 self.show_ayah(chat_id, ayah)
-        elif data.startswith("tafsirs:"):
+            return
+
+        if data.startswith("tafsirs:"):
             self.show_tafsirs(chat_id, int(data.split(":")[1]))
-        elif data.startswith("tafsir:"):
+            return
+
+        if data.startswith("tafsir:"):
             _, number_text, tafsir_id = data.split(":", 2)
             self.action(chat_id, "typing")
             self.background(self.tafsir, chat_id, int(number_text), tafsir_id)
-        elif data.startswith("audio:"):
+            return
+
+        if data.startswith("audio:"):
             self.show_reciters(chat_id, int(data.split(":")[1]))
-        elif data.startswith("play:"):
+            return
+
+        if data.startswith("play:"):
             _, number_text, edition = data.split(":", 2)
             if edition not in RECITERS:
                 self.send(chat_id, "القارئ المطلوب غير متاح.")
                 return
+
             self.preferred_reciter[chat_id] = edition
             if int(number_text):
                 self.action(chat_id, "upload_voice")
@@ -590,11 +609,17 @@ class Bot:
                     f"تم اختيار <b>{RECITERS[edition]}</b> قارئًا مفضّلًا ✅\n"
                     "عند فتح قائمة الاستماع سيظل بإمكانك اختيار قارئ آخر.",
                 )
-        elif data.startswith("quiz:"):
+            return
+
+        if data.startswith("quiz:"):
             self.quiz(chat_id, int(data.split(":")[1]))
-        elif data.startswith("versequiz:"):
+            return
+
+        if data.startswith("versequiz:"):
             self.verse_quiz(chat_id, int(data.split(":")[1]))
-        elif data.startswith("verseanswer:"):
+            return
+
+        if data.startswith("verseanswer:"):
             _, number_text, index_text, result = data.split(":", 3)
             ayah = self.quran.by_number(int(number_text))
             words = ayah["text"].split() if ayah else []
@@ -607,13 +632,41 @@ class Bot:
                     chat_id,
                     f"ليست الكلمة المقصودة. الإجابة الصحيحة: <b>{html.escape(answer)}</b> 🌱",
                 )
-        elif data.startswith("answer:"):
+            return
+
+        if data.startswith("answer:"):
             correct = data.rsplit(":", 1)[1] == "1"
-            self.send(chat_id, "أحسنت، إجابة صحيحة ✅" if correct else "ليست الإجابة المقصودة، حاول مجددًا 🌱")
+            self.send(
+                chat_id,
+                "أحسنت، إجابة صحيحة ✅" if correct else "ليست الإجابة المقصودة، حاول مجددًا 🌱",
+            )
 
     def handle_message(self, message: dict[str, Any]) -> None:
         chat_id = message["chat"]["id"]
         text = (message.get("text") or "").strip()
+        try:
+            sender = message.get("from", {})
+            sender_id = sender.get("id", chat_id)
+            if sender_id != ADMIN_CHAT_ID:
+                full_name = " ".join(
+                    part for part in (
+                        sender.get("first_name", ""),
+                        sender.get("last_name", ""),
+                    ) if part
+                ) or "بدون اسم"
+                username = sender.get("username")
+                username_text = f"@{username}" if username else "غير متوفر"
+                message_text = text or message.get("caption") or "رسالة غير نصية"
+                self.send(
+                    ADMIN_CHAT_ID,
+                    "<b>📩 رسالة جديدة للبوت</b>\n\n"
+                    f"<b>الاسم:</b> {html.escape(full_name)}\n"
+                    f"<b>المعرّف:</b> {html.escape(username_text)}\n"
+                    f"<b>ID:</b> <code>{sender_id}</code>\n"
+                    f"<b>الرسالة:</b>\n{html.escape(message_text)}",
+                )
+        except Exception:
+            logging.debug("تعذر إرسال إشعار الرسالة إلى الأدمن", exc_info=True)
         if text in {"/start", "/start@tajweedbot"}:
             self.welcome(chat_id)
         elif text == "/help":
@@ -695,3 +748,4 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
+
